@@ -14,46 +14,48 @@ function createOrUpdateIndexAndCover() {
     indexSheet = ss.insertSheet(indexSheetName);
   }
   
-  // Store existing "About" column values to retain them
-  var existingAboutValues = indexSheet.getRange(2, 3, indexSheet.getLastRow() - 1, 1).getValues();
+  // Get the last row for the existing values
+  var lastRow = indexSheet.getLastRow();
   
-  // Clear the "Index" sheet content
-  indexSheet.clear();
+  // Store existing values for both Column A (Obsolete/Current) and Column C (About)
+  var existingStatusValues = indexSheet.getRange(2, 1, lastRow - 1).getValues(); // Column A (starting from row 2)
+  var existingAboutValues = indexSheet.getRange(2, 3, lastRow - 1).getValues();  // Column C (starting from row 2)
   
-  // Delete columns D onwards
+  // Only clear the content of Column B (Hyperlinks) from row 2 downwards
+  indexSheet.getRange(2, 2, lastRow - 1).clearContent();  // Clear Column B only
+  
+  // Delete columns D onwards if they exist
   var lastColumn = indexSheet.getMaxColumns();
   if (lastColumn > 3) {
     indexSheet.deleteColumns(4, lastColumn - 3);
   }
   
-  // Set up headers
+  // Set up headers for Index tab
   indexSheet.getRange('A1').setValue('Obsolete/Current');
   indexSheet.getRange('B1').setValue('Hyperlinks');
   indexSheet.getRange('C1').setValue('About');
   
-  // Define options for dropdown
-  var options = ['Obsolete', 'Current'];
-  var dropdownRange = indexSheet.getRange(2, 1, sheetNames.length - 1, 1);
-  var rule = SpreadsheetApp.newDataValidation()
-                          .requireValueInList(options)
-                          .build();
-  dropdownRange.setDataValidation(rule);
-  
-  var row = 2;
+  var row = 2; // Start at row 2 to skip headers
   
   // Populate the "Index" tab with sheet names and hyperlinks
-  sheetNames.forEach(function(sheetName, index) {
+  sheetNames.forEach(function(sheetName, sheetIndex) {
     if (sheetName !== indexSheetName && sheetName !== coverSheetName) {
       var sheet = ss.getSheetByName(sheetName);
       var sheetUrl = ss.getUrl() + '#gid=' + sheet.getSheetId();
       
-      // Set dropdown in column A and sheet names as hyperlinks in column B
-      indexSheet.getRange(row, 1).setValue('Current');
+      // Set hyperlinks in column B (this column is always refreshed)
       indexSheet.getRange(row, 2).setFormula('=HYPERLINK("' + sheetUrl + '","' + sheetName + '")');
       
-      // If the "About" column already has a value, retain it, otherwise leave it blank
-      if (existingAboutValues[index] && existingAboutValues[index][0] !== "") {
-        indexSheet.getRange(row, 3).setValue(existingAboutValues[index][0]);
+      // Retain the existing value in Column A (Obsolete/Current)
+      if (existingStatusValues[row - 2] && existingStatusValues[row - 2][0] !== "") {
+        indexSheet.getRange(row, 1).setValue(existingStatusValues[row - 2][0]);
+      } else {
+        setDropdownWithColor(indexSheet, row);  // Set dropdown for new rows
+      }
+      
+      // Retain the existing value in Column C (About)
+      if (existingAboutValues[row - 2] && existingAboutValues[row - 2][0] !== "") {
+        indexSheet.getRange(row, 3).setValue(existingAboutValues[row - 2][0]);
       }
       
       row++;
@@ -61,13 +63,13 @@ function createOrUpdateIndexAndCover() {
   });
   
   // Remove unused rows beyond the last populated one
-  var lastRow = indexSheet.getLastRow();
+  lastRow = indexSheet.getLastRow();
   var maxRows = indexSheet.getMaxRows();
   if (maxRows > lastRow) {
     indexSheet.deleteRows(lastRow + 1, maxRows - lastRow); // Delete all unused rows from lastRow+1 onwards
   }
   
-  // Style the "Index" tab as black background
+  // Style the "Index" tab with a black background
   indexSheet.setTabColor('black');
   var headerRange = indexSheet.getRange(1, 1, 1, 3);
   headerRange.setBackground('black')
@@ -91,7 +93,7 @@ function createOrUpdateIndexAndCover() {
   // Style the "Cover" tab as black background
   coverSheet.setTabColor('black');
   
-  // Populate "Cover" tab with 25 records per column from the "Index" tab, using the formula
+  // Populate "Cover" tab with records where "Index" tab Column A is "Current"
   var column = 1;
   var recordStart = 1;
   
@@ -107,4 +109,37 @@ function createOrUpdateIndexAndCover() {
   for (var i = 1; i <= column; i++) {
     coverSheet.autoResizeColumn(i);
   }
+}
+
+// Function to set dropdown with colors for "Obsolete" and "Current" in the Index tab
+function setDropdownWithColor(sheet, row) {
+  var range = sheet.getRange(row, 1);
+  var rule = SpreadsheetApp.newDataValidation()
+                           .requireValueInList(['Obsolete', 'Current'])
+                           .setAllowInvalid(false)
+                           .build();
+  
+  range.setDataValidation(rule);
+  
+  // Apply conditional formatting for the dropdown options
+  var conditionalFormatRules = sheet.getConditionalFormatRules();
+  
+  // Light grey for "Obsolete" (Light Grey 2)
+  var obsoleteRule = SpreadsheetApp.newConditionalFormatRule()
+    .whenTextEqualTo('Obsolete')
+    .setBackground('#D9D9D9') // Light Grey 2
+    .setRanges([range])
+    .build();
+  
+  // Light green for "Current" (Light Green 3)
+  var currentRule = SpreadsheetApp.newConditionalFormatRule()
+    .whenTextEqualTo('Current')
+    .setBackground('#C6EFCE') // Light Green 3
+    .setRanges([range])
+    .build();
+  
+  conditionalFormatRules.push(obsoleteRule);
+  conditionalFormatRules.push(currentRule);
+  
+  sheet.setConditionalFormatRules(conditionalFormatRules);
 }
